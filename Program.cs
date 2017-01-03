@@ -1,16 +1,17 @@
 ﻿using System;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.IdentityModel.Clients.ActiveDirectory;
+using Newtonsoft.Json;
 
 [assembly: UserSecretsId("dnc-o365-mx")]
 
 namespace ConsoleApplication
 {
-
     public class Program
     {
         public static void Main(string[] args)
@@ -36,11 +37,58 @@ namespace ConsoleApplication
             var authority = $"https://login.windows.net/{tenant}";
 
             var authContext = new AuthenticationContext(authority, false);
-            var clientAssertion = new ClientAssertionCertificate(config.ClientId, cert);
+            var assertion = new ClientAssertionCertificate(config.ClientId, cert);
 
-            using (HttpClient client = SetUpClient(authContext, clientAssertion, "https://manage.office.com"))
+            ListMxSubs(authContext, assertion, tenant);
+            CreateMxSubs(authContext, assertion, tenant);
+            ListMxContent(authContext, assertion, tenant);
+        }
+
+        private void ListMxContent(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        {
+            using (HttpClient client = SetUpClient(authContext, assertion, "https://manage.office.com"))
             {
-                var url = $"https://manage.office.com/api/v1.0/{tenant}/activity/feed/subscriptions/list";
+
+                var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/content?contentType=Audit.SharePoint";
+
+                using (HttpResponseMessage resp = client.GetAsync(url).Result)
+                {
+                    var status = resp.StatusCode;
+                    var contentString = resp.Content.ReadAsStringAsync().Result;
+                }
+            }
+        }
+        private void CreateMxSubs(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        {
+            using (HttpClient client = SetUpClient(authContext, assertion, "https://manage.office.com"))
+            {
+
+                var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/start?contentType=Audit.SharePoint";
+
+                var payload = new
+                {
+                    webhook = new
+                    {
+                        address = "https://funfunfunctions.azurewebsites.net/api/o365mx",
+                    }
+                };
+
+                HttpContent content = new StringContent(JsonConvert.SerializeObject(payload));
+                content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json;utf-8");
+
+                using (HttpResponseMessage resp = client.PostAsync(url, content).Result)
+                {
+                    var status = resp.StatusCode;
+                    var contentString = resp.Content.ReadAsStringAsync().Result;
+                }
+            }
+        }
+
+        private void ListMxSubs(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        {
+            using (HttpClient client = SetUpClient(authContext, assertion, "https://manage.office.com"))
+            {
+                var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/list";
 
                 using(var resp = client.GetAsync(url).Result)
                 {
@@ -54,8 +102,6 @@ namespace ConsoleApplication
         {
             var authResult = authContext.AcquireTokenAsync(resource, assertion).Result;
             var token = authResult.AccessToken;
-
-            //Trace.WriteLine($"Access token: {token}");
 
             HttpClient client = new HttpClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
