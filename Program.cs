@@ -28,7 +28,8 @@ namespace ConsoleApplication
             (new Program()).Run(settings);
         }
 
-        private void Run(AppSettings config){
+        private void Run(AppSettings config)
+        {
             var cert = LoadCertificateFromFile("cert.pfx", config.CertificatePassword);
             //AddCert(cert);
             //var cert2 = LoadCertificateFromStore(config.CertificateThumbPrint);
@@ -39,18 +40,17 @@ namespace ConsoleApplication
             var authContext = new AuthenticationContext(authority, false);
             var assertion = new ClientAssertionCertificate(config.ClientId, cert);
 
-            ListMxSubs(authContext, assertion, tenant);
-            CreateMxSubs(authContext, assertion, tenant);
-            ListMxContent(authContext, assertion, tenant);
+            //DeleteMxSubs(authContext, assertion, tenant);
+            //ListMxSubs(authContext, assertion, tenant);
+            //CreateMxSubs(authContext, assertion, tenant);
+            //ListMxContent(authContext, assertion, tenant);
         }
 
-        private void ListMxContent(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        private void GetAction(AuthenticationContext authContext, ClientAssertionCertificate assertion, string url)
         {
+
             using (HttpClient client = SetUpClient(authContext, assertion, "https://manage.office.com"))
             {
-
-                var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/content?contentType=Audit.SharePoint";
-
                 using (HttpResponseMessage resp = client.GetAsync(url).Result)
                 {
                     var status = resp.StatusCode;
@@ -58,22 +58,13 @@ namespace ConsoleApplication
                 }
             }
         }
-        private void CreateMxSubs(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+
+        private void PostAction(AuthenticationContext authContext, ClientAssertionCertificate assertion, string url, string payload="")
         {
             using (HttpClient client = SetUpClient(authContext, assertion, "https://manage.office.com"))
             {
 
-                var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/start?contentType=Audit.SharePoint";
-
-                var payload = new
-                {
-                    webhook = new
-                    {
-                        address = "https://funfunfunctions.azurewebsites.net/api/o365mx",
-                    }
-                };
-
-                HttpContent content = new StringContent(JsonConvert.SerializeObject(payload));
+                HttpContent content = new StringContent(payload);
                 content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json;utf-8");
 
                 using (HttpResponseMessage resp = client.PostAsync(url, content).Result)
@@ -84,18 +75,35 @@ namespace ConsoleApplication
             }
         }
 
+        private void ListMxContent(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        {
+            var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/content?contentType=Audit.SharePoint";
+            GetAction(authContext, assertion, url);
+        }
+        private void CreateMxSubs(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        {
+            var payload = new
+            {
+                webhook = new
+                {
+                    address = "https://funfunfunctions.azurewebsites.net/api/o365mx",
+                }
+            };
+
+            var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/start?contentType=Audit.SharePoint";
+            PostAction(authContext, assertion, url, JsonConvert.SerializeObject(payload));
+        }
+
+        private void DeleteMxSubs(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
+        {
+            var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/stop?contentType=Audit.SharePoint";
+            PostAction(authContext, assertion, url);
+        }
+
         private void ListMxSubs(AuthenticationContext authContext, ClientAssertionCertificate assertion, string tenantId)
         {
-            using (HttpClient client = SetUpClient(authContext, assertion, "https://manage.office.com"))
-            {
-                var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/list";
-
-                using(var resp = client.GetAsync(url).Result)
-                {
-                    var status = resp.StatusCode;
-                    var content = resp.Content.ReadAsStringAsync().Result;
-                }
-            }
+            var url = $"https://manage.office.com/api/v1.0/{tenantId}/activity/feed/subscriptions/list";
+            GetAction(authContext, assertion, url);
         }
 
         private HttpClient SetUpClient(AuthenticationContext authContext, ClientAssertionCertificate assertion, string resource)
@@ -110,8 +118,8 @@ namespace ConsoleApplication
             return client;
         }
 
-        private X509Certificate2 AddCert(X509Certificate2 cert){
-
+        private X509Certificate2 AddCert(X509Certificate2 cert)
+        {
             X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
             store.Open(OpenFlags.ReadWrite);
             store.Add(cert);
@@ -120,8 +128,8 @@ namespace ConsoleApplication
             return null;
         }
 
-        private X509Certificate2 LoadCertificateFromStore(string thumb){
-
+        private X509Certificate2 LoadCertificateFromStore(string thumb)
+        {
             X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
             store.Open(OpenFlags.ReadOnly);
 
